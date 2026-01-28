@@ -86,16 +86,33 @@ export const JOB_CATEGORIES: CategoryDef[] = [
   },
 ];
 
-export function categorizeJob(title: string, description: string): string {
-  const text = `${title} ${description}`.toLowerCase();
+export function categorizeJob(title: string, description: string, rawText?: string): string {
+  // Combine all available text for better matching
+  const text = `${title} ${description} ${rawText || ""}`.toLowerCase();
+
+  // Score each category by counting keyword matches
+  let bestCategory = "other";
+  let bestScore = 0;
 
   for (const cat of JOB_CATEGORIES) {
+    let score = 0;
     for (const keyword of cat.keywords) {
       if (text.includes(keyword)) {
-        return cat.slug;
+        // Title matches weighted higher
+        if (title.toLowerCase().includes(keyword)) {
+          score += 3;
+        } else if (description.toLowerCase().includes(keyword)) {
+          score += 2;
+        } else {
+          score += 1;
+        }
       }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestCategory = cat.slug;
     }
   }
 
-  return "other";
+  return bestCategory;
 }

@@ -11,6 +11,16 @@ export interface IAttachment {
   ocrText?: string;
 }
 
+export interface IComment {
+  id?: string;
+  text?: string;
+  author?: string;
+  authorId?: string;
+  authorProfilePicture?: string;
+  date?: string;
+  likesCount?: number;
+}
+
 export interface IJob extends Document {
   jobTitle: string;
   company: string;
@@ -41,6 +51,7 @@ export interface IJob extends Document {
   facebookId: string;
   attachments: IAttachment[];
   ocrTexts: string[];
+  topComments: IComment[];
 }
 
 const AttachmentSchema = new Schema(
@@ -53,6 +64,19 @@ const AttachmentSchema = new Schema(
     url: { type: String, default: "" },
     id: { type: String, default: "" },
     ocrText: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
+const CommentSchema = new Schema(
+  {
+    id: { type: String, default: "" },
+    text: { type: String, default: "" },
+    author: { type: String, default: "" },
+    authorId: { type: String, default: "" },
+    authorProfilePicture: { type: String, default: "" },
+    date: { type: String, default: "" },
+    likesCount: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -88,6 +112,7 @@ const JobSchema = new Schema<IJob>(
     facebookId: { type: String, default: "" },
     attachments: { type: [AttachmentSchema], default: [] },
     ocrTexts: { type: [String], default: [] },
+    topComments: { type: [CommentSchema], default: [] },
   },
   { timestamps: true }
 );
@@ -100,4 +125,4 @@ JobSchema.index(
   }
 );
 
-export const Job = mongoose.model<IJob>("Job", JobSchema);
+export const Job = mongoose.model<IJob>("job_datas", JobSchema);

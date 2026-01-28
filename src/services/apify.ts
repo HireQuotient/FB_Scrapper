@@ -21,6 +21,26 @@ export interface RawPostAttachment {
   ocrText?: string;
 }
 
+export interface RawComment {
+  id?: string;
+  text?: string;
+  // Apify may use different field names - can be string or nested object
+  author?: string | { name?: string; id?: string; profilePicture?: string };
+  name?: string;
+  commenter?: string | { name?: string; id?: string };
+  from?: { name?: string; id?: string };
+  user?: { name?: string; id?: string };
+  authorId?: string;
+  userId?: string;
+  authorProfilePicture?: string;
+  profilePicture?: string;
+  profilePic?: string;
+  date?: string;
+  timestamp?: string;
+  likesCount?: number;
+  likes?: number;
+}
+
 export interface RawPost {
   text?: string;
   message?: string;
@@ -45,14 +65,15 @@ export interface RawPost {
   topReactionsCount?: number;
   groupTitle?: string;
   feedbackId?: string;
+  topComments?: RawComment[];
 }
 
 export async function scrapeGroup(groupUrl: string): Promise<RawPost[]> {
   const input = {
     startUrls: [{ url: groupUrl }],
-    resultsLimit: 2,
+    resultsLimit: 10,
     viewOption: "CHRONOLOGICAL",
-    maxComments: 0,
+    maxComments: 10,
     maxRequestRetries: 1,
   };
 
@@ -69,7 +90,13 @@ export async function scrapeGroup(groupUrl: string): Promise<RawPost[]> {
 
   const { items } = await apify.dataset(run.defaultDatasetId).listItems();
 
-  console.log(items)
+  // Log first post's comments structure for debugging
+  if (items.length > 0) {
+    const firstPost = items[0] as RawPost;
+    if (firstPost.topComments && firstPost.topComments.length > 0) {
+      console.log("Sample comment structure:", JSON.stringify(firstPost.topComments[0], null, 2));
+    }
+  }
 
   console.log(`Fetched ${items.length} posts from Apify`);
 

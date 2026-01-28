@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { Job } from "../models/Job";
-import { JOB_CATEGORIES } from "../constants/jobCategories";
+import { JOB_CATEGORIES, categorizeJob } from "../constants/jobCategories";
 import {
   buildJobPipeline,
   buildCategoryCountsPipeline,
@@ -77,6 +77,41 @@ router.get("/categories", async (_req: Request, res: Response): Promise<void> =>
   } catch (error) {
     console.error("Error fetching categories:", error);
     res.status(500).json({ error: "Failed to fetch categories" });
+  }
+});
+
+// POST /api/jobs/recategorize — re-categorize all existing jobs
+router.post("/recategorize", async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const jobs = await Job.find({});
+    let updated = 0;
+    const changes: Array<{ id: string; title: string; oldCategory: string; newCategory: string }> = [];
+
+    for (const job of jobs) {
+      const newCategory = categorizeJob(job.jobTitle, job.description, job.rawText);
+      if (newCategory !== job.category) {
+        changes.push({
+          id: job._id.toString(),
+          title: job.jobTitle,
+          oldCategory: job.category,
+          newCategory,
+        });
+        job.category = newCategory;
+        await job.save();
+        updated++;
+      }
+    }
+
+    console.log(`Re-categorized ${updated} jobs out of ${jobs.length}`);
+    res.json({
+      message: `Re-categorized ${updated} jobs out of ${jobs.length}`,
+      updated,
+      total: jobs.length,
+      changes,
+    });
+  } catch (error) {
+    console.error("Error re-categorizing jobs:", error);
+    res.status(500).json({ error: "Failed to re-categorize jobs" });
   }
 });
 

@@ -1,0 +1,346 @@
+.landing-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.landing-container {
+  max-width: 32rem;
+  width: 100%;
+}
+
+.landing-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.landing-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 0.5rem 0;
+}
+
+.landing-header p {
+  color: #6b7280;
+  margin: 0;
+}
+
+.landing-card {
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+}
+
+.landing-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.landing-card label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.landing-card input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.landing-card input:focus {
+  outline: none;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+.landing-card input:disabled {
+  background-color: #f9fafb;
+}
+
+.error-message {
+  color: #dc2626;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.submit-button {
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background-color: #22c55e;
+  color: white;
+  font-weight: 500;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.submit-button:hover:not(:disabled) {
+  background-color: #16a34a;
+}
+
+.submit-button:disabled {
+  background-color: #86efac;
+  cursor: not-allowed;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-info {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #f0fdf4;
+  border-radius: 0.5rem;
+}
+
+.loading-info p {
+  color: #166534;
+  font-size: 0.875rem;
+  text-align: center;
+  margin: 0;
+}
+
+.dashboard-link {
+  margin-top: 1.5rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.dashboard-link a {
+  color: #22c55e;
+  text-decoration: none;
+}
+
+.dashboard-link a:hover {
+  text-decoration: underline;
+}
+
+/* Divider */
+.divider {
+  display: flex;
+  align-items: center;
+  margin: 1.5rem 0;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background-color: #e5e7eb;
+}
+
+.divider span {
+  padding: 0 1rem;
+  color: #9ca3af;
+  font-size: 0.875rem;
+}
+
+/* CSV Upload */
+.csv-upload {
+  text-align: center;
+}
+
+.csv-upload__label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.25rem;
+}
+
+.csv-upload__hint {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin: 0 0 1rem 0;
+}
+
+.csv-upload__input {
+  display: none;
+}
+
+.csv-upload__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background-color: white;
+  color: #374151;
+  border: 2px dashed #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.csv-upload__button:hover {
+  border-color: #22c55e;
+  color: #22c55e;
+  background-color: #f0fdf4;
+}
+
+.csv-upload__button--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* CSV Preview */
+.csv-preview {
+  margin-top: 1.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.csv-preview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.csv-preview__count {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.csv-preview__stats {
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.csv-preview__clear {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.csv-preview__clear:hover {
+  color: #dc2626;
+}
+
+.csv-preview__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.csv-preview__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.8125rem;
+}
+
+.csv-preview__item:last-child {
+  border-bottom: none;
+}
+
+.csv-preview__item--scraping {
+  background-color: #fefce8;
+}
+
+.csv-preview__item--success {
+  background-color: #f0fdf4;
+}
+
+.csv-preview__item--error {
+  background-color: #fef2f2;
+}
+
+.csv-preview__url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #374151;
+}
+
+.csv-preview__status {
+  display: flex;
+  align-items: center;
+  margin-left: 0.5rem;
+}
+
+.csv-preview__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 0.25rem;
+}
+
+.csv-preview__remove:hover {
+  color: #dc2626;
+  background-color: #fee2e2;
+}
+
+.csv-preview__status .spinner {
+  color: #eab308;
+}
+
+.csv-preview__status .icon-success {
+  color: #22c55e;
+}
+
+.csv-preview__status .icon-error {
+  color: #dc2626;
+}
+
+.csv-preview__actions {
+  padding: 1rem;
+  border-top: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+}
+
+.csv-preview__actions .submit-button {
+  width: 100%;
+}

@@ -105,6 +105,68 @@ function buildCombinedText(text: string, ocrTexts?: string[]): string {
   return combined;
 }
 
+const OCR_CLEANUP_PROMPT = `You are a text cleaner. The following text is OCR output from a Facebook image.
+
+Facebook often adds auto-generated descriptions like:
+- "may be an image of text"
+- "may be an image of 1 person"
+- "may be an image of food and text"
+- "No photo description available"
+
+Your task:
+1. Remove any Facebook auto-generated image descriptions
+2. Keep ONLY the actual readable text content from the image (job details, contact info, requirements, etc.)
+3. If there's no meaningful text content (only auto-descriptions), return an empty string
+4. Clean up formatting but preserve the essential information
+5. Return ONLY the cleaned text, nothing else (no explanations, no quotes)
+
+OCR Text:
+`;
+
+export async function cleanOcrText(ocrText: string): Promise<string> {
+  if (!ocrText || ocrText.trim().length === 0) {
+    return "";
+  }
+
+  // Quick check - if it's just a short auto-description, skip the API call
+  const lowerText = ocrText.toLowerCase();
+  if (
+    lowerText.startsWith("may be an image of") ||
+    lowerText === "no photo description available" ||
+    ocrText.trim().length < 20
+  ) {
+    // Check if there's actual text content after the description
+    if (!lowerText.includes("text") || ocrText.length < 50) {
+      return "";
+    }
+  }
+
+  try {
+    const model = getGenAI().getGenerativeModel({ model: "gemini-2.0-flash" });
+    const result = await model.generateContent(OCR_CLEANUP_PROMPT + ocrText);
+    const cleaned = result.response.text().trim();
+
+    // If Gemini returns something indicating no content, return empty
+    if (
+      cleaned.toLowerCase() === "empty" ||
+      cleaned.toLowerCase() === "none" ||
+      cleaned === '""' ||
+      cleaned === "''"
+    ) {
+      return "";
+    }
+
+    return cleaned;
+  } catch (error) {
+    console.error("OCR cleanup error:", error);
+    // Return original if cleanup fails, but remove obvious auto-descriptions
+    if (lowerText.startsWith("may be an image of")) {
+      return "";
+    }
+    return ocrText;
+  }
+}
+
 export async function extractJobFromImage(
   imageUrl: string,
   text: string,

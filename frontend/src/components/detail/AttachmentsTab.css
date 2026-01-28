@@ -1,0 +1,190 @@
+.attachments-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.attachments-tab--empty {
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: #9ca3af;
+}
+
+.attachments-tab--empty .empty-icon {
+  color: #e5e7eb;
+  margin-bottom: 1rem;
+}
+
+.attachments-tab--empty p {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.attachments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.attachment-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background-color: white;
+}
+
+.attachment-image-container {
+  position: relative;
+  aspect-ratio: 4/3;
+  background-color: #f3f4f6;
+}
+
+.attachment-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.attachment-zoom {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.attachment-image-container:hover .attachment-zoom {
+  opacity: 1;
+}
+
+.attachment-zoom:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.attachment-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background-color: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+}
+
+.attachment-type {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.attachment-size {
+  font-size: 0.6875rem;
+  color: #9ca3af;
+}
+
+.attachment-placeholder {
+  aspect-ratio: 4/3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: #f3f4f6;
+  color: #9ca3af;
+}
+
+.attachment-placeholder span {
+  font-size: 0.8125rem;
+}
+
+.attachment-ocr {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid #e5e7eb;
+  background-color: #fffbeb;
+}
+
+.attachment-ocr .ocr-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  background-color: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 0.375rem;
+  color: #92400e;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.attachment-ocr .ocr-toggle-btn:hover {
+  background-color: #fde68a;
+  border-color: #f59e0b;
+}
+
+.attachment-ocr .ocr-text {
+  margin: 0.5rem 0 0 0;
+  padding: 0.5rem;
+  font-size: 0.8125rem;
+  color: #78350f;
+  line-height: 1.5;
+  max-height: 150px;
+  overflow-y: auto;
+  background-color: #fef9e7;
+  border-radius: 0.25rem;
+  border: 1px solid #fcd34d;
+}
+
+/* Lightbox */
+.lightbox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 2rem;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.lightbox-close:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.lightbox-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 0.5rem;
+}

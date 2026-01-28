@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
-import { scrapeGroup, RawPost } from "../services/apify";
-import { extractJobFromText, extractJobFromImage, StructuredJob } from "../services/gemini";
-import { Job, IAttachment } from "../models/Job";
+import { scrapeGroup, RawPost, RawComment } from "../services/apify";
+import { extractJobFromText, extractJobFromImage, cleanOcrText, StructuredJob } from "../services/gemini";
+import { Job, IAttachment, IComment } from "../models/Job";
 import { categorizeJob } from "../constants/jobCategories";
 
 const router = Router();
@@ -70,6 +70,52 @@ function getAttachments(post: RawPost): IAttachment[] {
   }));
 }
 
+function extractAuthorName(c: RawComment): string {
+  // Handle string values
+  if (typeof c.author === "string" && c.author) return c.author;
+  if (typeof c.name === "string" && c.name) return c.name;
+  if (typeof c.commenter === "string" && c.commenter) return c.commenter;
+
+  // Handle nested objects
+  if (typeof c.author === "object" && c.author?.name) return c.author.name;
+  if (typeof c.commenter === "object" && c.commenter?.name) return c.commenter.name;
+  if (c.from?.name) return c.from.name;
+  if (c.user?.name) return c.user.name;
+
+  return "";
+}
+
+function extractAuthorId(c: RawComment): string {
+  if (c.authorId) return c.authorId;
+  if (c.userId) return c.userId;
+  if (typeof c.author === "object" && c.author?.id) return c.author.id;
+  if (typeof c.commenter === "object" && c.commenter?.id) return c.commenter.id;
+  if (c.from?.id) return c.from.id;
+  if (c.user?.id) return c.user.id;
+  return "";
+}
+
+function extractAuthorPicture(c: RawComment): string {
+  if (c.authorProfilePicture) return c.authorProfilePicture;
+  if (c.profilePicture) return c.profilePicture;
+  if (c.profilePic) return c.profilePic;
+  if (typeof c.author === "object" && c.author?.profilePicture) return c.author.profilePicture;
+  return "";
+}
+
+function getTopComments(post: RawPost): IComment[] {
+  if (!post.topComments || post.topComments.length === 0) return [];
+  return post.topComments.map((c: RawComment) => ({
+    id: c.id || "",
+    text: c.text || "",
+    author: extractAuthorName(c),
+    authorId: extractAuthorId(c),
+    authorProfilePicture: extractAuthorPicture(c),
+    date: c.date || c.timestamp || "",
+    likesCount: c.likesCount || c.likes || 0,
+  }));
+}
+
 interface PostMetadata {
   facebookUrl: string;
   postTime: string;
@@ -83,6 +129,7 @@ interface PostMetadata {
   facebookId: string;
   attachments: IAttachment[];
   ocrTexts: string[];
+  topComments: IComment[];
 }
 
 function getPostMetadata(post: RawPost): PostMetadata {
@@ -99,6 +146,34 @@ function getPostMetadata(post: RawPost): PostMetadata {
     facebookId: post.facebookId || post.id || "",
     attachments: getAttachments(post),
     ocrTexts: getOcrTexts(post),
+    topComments: getTopComments(post),
+  };
+}
+
+async function cleanMetadataOcr(metadata: PostMetadata): Promise<PostMetadata> {
+  // Clean OCR texts array
+  const cleanedOcrTexts: string[] = [];
+  for (const ocrText of metadata.ocrTexts) {
+    const cleaned = await cleanOcrText(ocrText);
+    if (cleaned) {
+      cleanedOcrTexts.push(cleaned);
+    }
+  }
+
+  // Clean OCR in attachments
+  const cleanedAttachments: IAttachment[] = [];
+  for (const attachment of metadata.attachments) {
+    const cleanedOcr = attachment.ocrText ? await cleanOcrText(attachment.ocrText) : "";
+    cleanedAttachments.push({
+      ...attachment,
+      ocrText: cleanedOcr,
+    });
+  }
+
+  return {
+    ...metadata,
+    ocrTexts: cleanedOcrTexts,
+    attachments: cleanedAttachments,
   };
 }
 
@@ -164,7 +239,9 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     let totalSaved = 0;
     for (const { job, metadata } of results) {
       try {
-        const category = categorizeJob(job.jobTitle, job.description);
+        const category = categorizeJob(job.jobTitle, job.description, job.rawText);
+        // Clean OCR text before saving
+        const cleanedMetadata = await cleanMetadataOcr(metadata);
         await Job.findOneAndUpdate(
           { sourceUrl: job.sourceUrl },
           {
@@ -172,7 +249,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
             category,
             groupUrl: url,
             scrapedAt: new Date(),
-            ...metadata,
+            ...cleanedMetadata,
           },
           { upsert: true, new: true }
         );
