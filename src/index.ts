@@ -9,7 +9,17 @@ import postsRouter from "./routes/posts";
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors()); // Allow all origins
+// CORS configuration - allow all origins
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  credentials: false,
+}));
+
+// Handle preflight requests explicitly
+app.options("*", cors());
+
 app.use(express.json());
 
 app.use("/api/scrape", scrapeRouter);
