@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { scrapeGroup, RawPost } from "../services/apify";
+import { scrapeGroup, scrapeMultipleGroups, RawPost } from "../services/apify";
 import { extractJobFromText, extractJobFromImage, StructuredJob } from "../services/gemini";
 import { Job, IAttachment } from "../models/Job";
 import { categorizeJob } from "../constants/jobCategories";
@@ -102,8 +102,104 @@ function getPostMetadata(post: RawPost): PostMetadata {
   };
 }
 
+// Process a single post and extract job data
+async function processPost(
+  post: RawPost,
+  groupUrl: string
+): Promise<{ job: StructuredJob; metadata: PostMetadata; groupUrl: string } | null> {
+  const text = getPostText(post);
+  const imageUrl = getPostImageUrl(post);
+  const sourceUrl = getPostUrl(post);
+  const postedDate = getPostDate(post);
+  const ocrTexts = getOcrTexts(post);
+  const metadata = getPostMetadata(post);
+
+  let job: StructuredJob | null;
+  if (imageUrl) {
+    job = await extractJobFromImage(imageUrl, text, sourceUrl, postedDate, ocrTexts);
+  } else {
+    job = await extractJobFromText(text, sourceUrl, postedDate, ocrTexts);
+  }
+
+  return job ? { job, metadata, groupUrl } : null;
+}
+
+// Process posts in parallel batches with concurrency control
+async function processPostsBatch(
+  posts: Array<{ post: RawPost; groupUrl: string }>,
+  batchSize: number = 10
+): Promise<Array<{ job: StructuredJob; metadata: PostMetadata; groupUrl: string }>> {
+  const results: Array<{ job: StructuredJob; metadata: PostMetadata; groupUrl: string }> = [];
+
+  for (let i = 0; i < posts.length; i += batchSize) {
+    const batch = posts.slice(i, i + batchSize);
+
+    const batchResults = await Promise.allSettled(
+      batch.map(({ post, groupUrl }) => processPost(post, groupUrl))
+    );
+
+    for (const result of batchResults) {
+      if (result.status === "fulfilled" && result.value) {
+        results.push(result.value);
+      }
+    }
+
+    console.log(`Processed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(posts.length / batchSize)}`);
+  }
+
+  return results;
+}
+
+// Bulk save jobs to MongoDB using bulkWrite for performance
+async function bulkSaveJobs(
+  jobsData: Array<{ job: StructuredJob; metadata: PostMetadata; groupUrl: string }>
+): Promise<{ saved: number; errors: number }> {
+  if (jobsData.length === 0) {
+    return { saved: 0, errors: 0 };
+  }
+
+  const operations = jobsData.map(({ job, metadata, groupUrl }) => {
+    const category = categorizeJob(job.jobTitle, job.description);
+    return {
+      updateOne: {
+        filter: { sourceUrl: job.sourceUrl },
+        update: {
+          $set: {
+            ...job,
+            category,
+            groupUrl,
+            scrapedAt: new Date(),
+            ...metadata,
+          },
+        },
+        upsert: true,
+      },
+    };
+  });
+
+  try {
+    const result = await Job.bulkWrite(operations, { ordered: false });
+    return {
+      saved: result.upsertedCount + result.modifiedCount,
+      errors: 0,
+    };
+  } catch (error: unknown) {
+    console.error("Bulk save error:", error);
+    // Even with errors, some may have succeeded
+    if (error && typeof error === "object" && "result" in error) {
+      const bulkError = error as { result: { nUpserted: number; nModified: number } };
+      return {
+        saved: bulkError.result.nUpserted + bulkError.result.nModified,
+        errors: jobsData.length - (bulkError.result.nUpserted + bulkError.result.nModified),
+      };
+    }
+    return { saved: 0, errors: jobsData.length };
+  }
+}
+
+// Single URL endpoint (original)
 router.post("/", async (req: Request, res: Response): Promise<void> => {
-  const { url } = req.body;
+  const { url, resultsLimit } = req.body;
 
   if (!url || typeof url !== "string") {
     res.status(400).json({ error: "URL is required" });
@@ -117,7 +213,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
 
   try {
     console.log("Scraping public Facebook group:", url);
-    const rawPosts = await scrapeGroup(url);
+    const rawPosts = await scrapeGroup(url, { resultsLimit });
 
     if (!rawPosts || rawPosts.length === 0) {
       res.status(422).json({
@@ -128,64 +224,122 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
 
     console.log(`Processing ${rawPosts.length} posts with Gemini...`);
 
-    // Process posts concurrently in batches of 5
-    const batchSize = 5;
-    const results: Array<{ job: StructuredJob; metadata: PostMetadata }> = [];
-
-    for (let i = 0; i < rawPosts.length; i += batchSize) {
-      const batch = rawPosts.slice(i, i + batchSize);
-      const promises = batch.map(async (post) => {
-        const text = getPostText(post);
-        const imageUrl = getPostImageUrl(post);
-        const sourceUrl = getPostUrl(post);
-        const postedDate = getPostDate(post);
-        const ocrTexts = getOcrTexts(post);
-        const metadata = getPostMetadata(post);
-
-        let job: StructuredJob | null;
-        if (imageUrl) {
-          job = await extractJobFromImage(imageUrl, text, sourceUrl, postedDate, ocrTexts);
-        } else {
-          job = await extractJobFromText(text, sourceUrl, postedDate, ocrTexts);
-        }
-
-        return job ? { job, metadata } : null;
-      });
-
-      const batchResults = await Promise.all(promises);
-      for (const r of batchResults) {
-        if (r) results.push(r);
-      }
-    }
+    const postsWithUrl = rawPosts.map((post) => ({ post, groupUrl: url }));
+    const results = await processPostsBatch(postsWithUrl, 10);
 
     console.log(`Found ${results.length} job postings out of ${rawPosts.length} posts`);
 
-    // Save jobs to MongoDB with upsert (dedup on sourceUrl)
-    let totalSaved = 0;
-    for (const { job, metadata } of results) {
-      try {
-        const category = categorizeJob(job.jobTitle, job.description);
-        await Job.findOneAndUpdate(
-          { sourceUrl: job.sourceUrl },
-          {
-            ...job,
-            category,
-            groupUrl: url,
-            scrapedAt: new Date(),
-            ...metadata,
-          },
-          { upsert: true, new: true }
-        );
-        totalSaved++;
-      } catch (err) {
-        console.error("Error saving job to DB:", err);
+    const { saved, errors } = await bulkSaveJobs(results);
+
+    console.log(`Saved ${saved} jobs to MongoDB (${errors} errors)`);
+    res.json({ jobs: results.map((r) => r.job), totalSaved: saved, errors });
+  } catch (error: unknown) {
+    console.error("Scrape error:", error);
+    const message = error instanceof Error ? error.message : "An unexpected error occurred";
+    res.status(500).json({ error: message });
+  }
+});
+
+// Batch URL endpoint - scrape multiple groups efficiently
+router.post("/batch", async (req: Request, res: Response): Promise<void> => {
+  const { urls, resultsLimit, concurrency } = req.body as {
+    urls: string[];
+    resultsLimit?: number;
+    concurrency?: number;
+  };
+
+  // Validate input
+  if (!urls || !Array.isArray(urls) || urls.length === 0) {
+    res.status(400).json({ error: "urls must be a non-empty array of Facebook group URLs" });
+    return;
+  }
+
+  if (urls.length > 20) {
+    res.status(400).json({ error: "Maximum 20 URLs allowed per batch request" });
+    return;
+  }
+
+  // Validate all URLs first
+  const invalidUrls = urls.filter((url) => !isValidFacebookGroupUrl(url));
+  if (invalidUrls.length > 0) {
+    res.status(400).json({
+      error: "Invalid Facebook group URLs found",
+      invalidUrls,
+    });
+    return;
+  }
+
+  try {
+    const startTime = Date.now();
+    console.log(`Starting batch scrape for ${urls.length} groups...`);
+
+    // Step 1: Scrape all groups in parallel with concurrency control
+    const groupPostsMap = await scrapeMultipleGroups(urls, {
+      resultsLimit,
+      concurrency: concurrency ?? 3,
+    });
+
+    // Collect all posts with their group URLs
+    const allPosts: Array<{ post: RawPost; groupUrl: string }> = [];
+    const urlResults: Record<string, { postsFound: number; error?: string }> = {};
+
+    for (const [groupUrl, posts] of groupPostsMap) {
+      if (posts.length === 0) {
+        urlResults[groupUrl] = { postsFound: 0, error: "No posts retrieved (may be private group)" };
+      } else {
+        urlResults[groupUrl] = { postsFound: posts.length };
+        for (const post of posts) {
+          allPosts.push({ post, groupUrl });
+        }
       }
     }
 
-    console.log(`Saved ${totalSaved} jobs to MongoDB`);
-    res.json({ jobs: results.map((r) => r.job), totalSaved });
+    console.log(`Total posts collected: ${allPosts.length} from ${urls.length} groups`);
+
+    if (allPosts.length === 0) {
+      res.status(422).json({
+        error: "No posts could be retrieved from any group",
+        urlResults,
+      });
+      return;
+    }
+
+    // Step 2: Process all posts with Gemini in parallel batches
+    console.log("Processing posts with Gemini...");
+    const jobResults = await processPostsBatch(allPosts, 15); // Higher batch size for speed
+
+    console.log(`Extracted ${jobResults.length} jobs from ${allPosts.length} posts`);
+
+    // Step 3: Bulk save all jobs to MongoDB
+    const { saved, errors } = await bulkSaveJobs(jobResults);
+
+    const totalTime = Date.now() - startTime;
+    console.log(`Batch scrape completed in ${totalTime}ms - Saved ${saved} jobs`);
+
+    // Aggregate results by group
+    const jobsByGroup: Record<string, StructuredJob[]> = {};
+    for (const { job, groupUrl } of jobResults) {
+      if (!jobsByGroup[groupUrl]) {
+        jobsByGroup[groupUrl] = [];
+      }
+      jobsByGroup[groupUrl].push(job);
+    }
+
+    res.json({
+      summary: {
+        totalGroups: urls.length,
+        totalPostsScraped: allPosts.length,
+        totalJobsExtracted: jobResults.length,
+        totalJobsSaved: saved,
+        totalErrors: errors,
+        processingTimeMs: totalTime,
+      },
+      urlResults,
+      jobsByGroup,
+      allJobs: jobResults.map((r) => r.job),
+    });
   } catch (error: unknown) {
-    console.error("Scrape error:", error);
+    console.error("Batch scrape error:", error);
     const message = error instanceof Error ? error.message : "An unexpected error occurred";
     res.status(500).json({ error: message });
   }

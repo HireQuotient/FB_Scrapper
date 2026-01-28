@@ -47,10 +47,14 @@ export interface RawPost {
   feedbackId?: string;
 }
 
-export async function scrapeGroup(groupUrl: string): Promise<RawPost[]> {
+export interface ScrapeOptions {
+  resultsLimit?: number;
+}
+
+export async function scrapeGroup(groupUrl: string, options?: ScrapeOptions): Promise<RawPost[]> {
   const input = {
     startUrls: [{ url: groupUrl }],
-    resultsLimit: 2,
+    resultsLimit: options?.resultsLimit ?? 10,
     viewOption: "CHRONOLOGICAL",
     maxComments: 0,
     maxRequestRetries: 1,
@@ -62,16 +66,44 @@ export async function scrapeGroup(groupUrl: string): Promise<RawPost[]> {
   const run = await apify.actor("apify/facebook-groups-scraper").call(input);
 
   console.log("Apify actor run finished, fetching results...");
-  // const limit = 10;
-  // const offset = 0;
-  // const chunkSize = 10;
-
 
   const { items } = await apify.dataset(run.defaultDatasetId).listItems();
-
-  console.log(items)
 
   console.log(`Fetched ${items.length} posts from Apify`);
 
   return items as RawPost[];
+}
+
+/**
+ * Scrape multiple groups in parallel with concurrency control
+ */
+export async function scrapeMultipleGroups(
+  groupUrls: string[],
+  options?: ScrapeOptions & { concurrency?: number }
+): Promise<Map<string, RawPost[]>> {
+  const concurrency = options?.concurrency ?? 3; // Default 3 concurrent Apify calls
+  const results = new Map<string, RawPost[]>();
+
+  // Process URLs in chunks to control concurrency
+  for (let i = 0; i < groupUrls.length; i += concurrency) {
+    const chunk = groupUrls.slice(i, i + concurrency);
+
+    const chunkResults = await Promise.allSettled(
+      chunk.map(async (url) => {
+        const posts = await scrapeGroup(url, options);
+        return { url, posts };
+      })
+    );
+
+    for (const result of chunkResults) {
+      if (result.status === "fulfilled") {
+        results.set(result.value.url, result.value.posts);
+      } else {
+        console.error("Failed to scrape group:", result.reason);
+        results.set(chunk[chunkResults.indexOf(result)], []);
+      }
+    }
+  }
+
+  return results;
 }

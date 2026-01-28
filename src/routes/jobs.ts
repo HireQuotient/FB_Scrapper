@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { Job } from "../models/Job";
-import { JOB_CATEGORIES } from "../constants/jobCategories";
+import { JOB_CATEGORIES, categorizeJob } from "../constants/jobCategories";
 import {
   buildJobPipeline,
   buildCategoryCountsPipeline,
@@ -92,6 +92,107 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error("Error fetching job:", error);
     res.status(500).json({ error: "Failed to fetch job" });
+  }
+});
+
+// POST /api/jobs/bulk — save multiple scraped jobs after user clicks "Add to DB"
+// Optimized with bulkWrite for faster performance
+router.post("/bulk", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { jobs, groupUrl } = req.body as {
+      jobs: any[];
+      groupUrl?: string;
+    };
+
+    if (!Array.isArray(jobs) || jobs.length === 0) {
+      res.status(400).json({ error: "jobs must be a non-empty array" });
+      return;
+    }
+
+    // Validate all jobs have sourceUrl
+    const validJobs: any[] = [];
+    const validationErrors: { sourceUrl?: string; message: string }[] = [];
+
+    for (const rawJob of jobs) {
+      if (!rawJob.sourceUrl) {
+        validationErrors.push({
+          sourceUrl: undefined,
+          message: "sourceUrl is required for each job",
+        });
+      } else {
+        validJobs.push(rawJob);
+      }
+    }
+
+    if (validJobs.length === 0) {
+      res.status(400).json({
+        error: "No valid jobs to save",
+        errorCount: validationErrors.length,
+        errors: validationErrors,
+      });
+      return;
+    }
+
+    // Build bulk operations
+    const operations = validJobs.map((rawJob) => {
+      const category = categorizeJob(
+        rawJob.jobTitle || "",
+        rawJob.description || ""
+      );
+
+      return {
+        updateOne: {
+          filter: { sourceUrl: rawJob.sourceUrl },
+          update: {
+            $set: {
+              ...rawJob,
+              category,
+              groupUrl: rawJob.groupUrl || groupUrl || "",
+              scrapedAt: new Date(),
+            },
+          },
+          upsert: true,
+        },
+      };
+    });
+
+    // Execute bulk write
+    const result = await Job.bulkWrite(operations, { ordered: false });
+
+    const savedCount = result.upsertedCount + result.modifiedCount;
+
+    res.json({
+      savedCount,
+      upsertedCount: result.upsertedCount,
+      modifiedCount: result.modifiedCount,
+      errorCount: validationErrors.length,
+      errors: validationErrors,
+    });
+  } catch (error) {
+    console.error("Bulk save error:", error);
+
+    // Handle partial success in bulk write errors
+    if (error && typeof error === "object" && "result" in error) {
+      const bulkError = error as {
+        result: { nUpserted: number; nModified: number };
+        writeErrors?: Array<{ errmsg: string; op?: { q?: { sourceUrl?: string } } }>;
+      };
+      const writeErrors = bulkError.writeErrors || [];
+
+      res.json({
+        savedCount: bulkError.result.nUpserted + bulkError.result.nModified,
+        upsertedCount: bulkError.result.nUpserted,
+        modifiedCount: bulkError.result.nModified,
+        errorCount: writeErrors.length,
+        errors: writeErrors.map((e) => ({
+          sourceUrl: e.op?.q?.sourceUrl,
+          message: e.errmsg,
+        })),
+      });
+      return;
+    }
+
+    res.status(500).json({ error: "Failed to save jobs" });
   }
 });
 
