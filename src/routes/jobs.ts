@@ -80,6 +80,30 @@ router.get("/categories", async (_req: Request, res: Response): Promise<void> =>
   }
 });
 
+// GET /api/jobs/types — job type counts for filter bar
+router.get("/types", async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const counts = await Job.aggregate([
+      { $match: { jobType: { $ne: "" } } },
+      { $group: { _id: "$jobType", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+
+    const types = counts.map((item) => ({
+      slug: item._id,
+      name: item._id.charAt(0).toUpperCase() + item._id.slice(1).replace("-", " "),
+      count: item.count,
+    }));
+
+    const totalCount = types.reduce((sum, t) => sum + t.count, 0);
+
+    res.json({ types, totalCount });
+  } catch (error) {
+    console.error("Error fetching job types:", error);
+    res.status(500).json({ error: "Failed to fetch job types" });
+  }
+});
+
 // GET /api/jobs/:id — single job detail
 router.get("/:id", async (req: Request, res: Response): Promise<void> => {
   try {

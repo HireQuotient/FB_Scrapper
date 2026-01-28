@@ -11,6 +11,14 @@ export interface IAttachment {
   ocrText?: string;
 }
 
+export interface IComment {
+  text?: string;
+  author?: string;
+  authorId?: string;
+  timestamp?: string;
+  likesCount?: number;
+}
+
 export interface IJob extends Document {
   jobTitle: string;
   company: string;
@@ -41,6 +49,7 @@ export interface IJob extends Document {
   facebookId: string;
   attachments: IAttachment[];
   ocrTexts: string[];
+  topComments: IComment[];
 }
 
 const AttachmentSchema = new Schema(
@@ -53,6 +62,17 @@ const AttachmentSchema = new Schema(
     url: { type: String, default: "" },
     id: { type: String, default: "" },
     ocrText: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
+const CommentSchema = new Schema(
+  {
+    text: { type: String, default: "" },
+    author: { type: String, default: "" },
+    authorId: { type: String, default: "" },
+    timestamp: { type: String, default: "" },
+    likesCount: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -88,6 +108,7 @@ const JobSchema = new Schema<IJob>(
     facebookId: { type: String, default: "" },
     attachments: { type: [AttachmentSchema], default: [] },
     ocrTexts: { type: [String], default: [] },
+    topComments: { type: [CommentSchema], default: [] },
   },
   { timestamps: true }
 );

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { scrapeGroup, RawPost } from "../services/apify";
 import { extractJobFromText, extractJobFromImage, StructuredJob } from "../services/gemini";
-import { Job, IAttachment } from "../models/Job";
+import { Job, IAttachment, IComment } from "../models/Job";
 import { categorizeJob } from "../constants/jobCategories";
 
 const router = Router();
@@ -70,6 +70,17 @@ function getAttachments(post: RawPost): IAttachment[] {
   }));
 }
 
+function getTopComments(post: RawPost): IComment[] {
+  if (!post.topComments || post.topComments.length === 0) return [];
+  return post.topComments.map((c) => ({
+    text: c.text || "",
+    author: c.author || "",
+    authorId: c.authorId || "",
+    timestamp: c.timestamp || "",
+    likesCount: c.likesCount || 0,
+  }));
+}
+
 interface PostMetadata {
   facebookUrl: string;
   postTime: string;
@@ -83,6 +94,7 @@ interface PostMetadata {
   facebookId: string;
   attachments: IAttachment[];
   ocrTexts: string[];
+  topComments: IComment[];
 }
 
 function getPostMetadata(post: RawPost): PostMetadata {
@@ -99,6 +111,7 @@ function getPostMetadata(post: RawPost): PostMetadata {
     facebookId: post.facebookId || post.id || "",
     attachments: getAttachments(post),
     ocrTexts: getOcrTexts(post),
+    topComments: getTopComments(post),
   };
 }
 

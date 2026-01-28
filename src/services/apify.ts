@@ -21,6 +21,14 @@ export interface RawPostAttachment {
   ocrText?: string;
 }
 
+export interface RawComment {
+  text?: string;
+  author?: string;
+  authorId?: string;
+  timestamp?: string;
+  likesCount?: number;
+}
+
 export interface RawPost {
   text?: string;
   message?: string;
@@ -45,12 +53,13 @@ export interface RawPost {
   topReactionsCount?: number;
   groupTitle?: string;
   feedbackId?: string;
+  topComments?: RawComment[];
 }
 
 export async function scrapeGroup(groupUrl: string): Promise<RawPost[]> {
   const input = {
     startUrls: [{ url: groupUrl }],
-    resultsLimit: 2,
+    resultsLimit: 10,
     viewOption: "CHRONOLOGICAL",
     maxComments: 0,
     maxRequestRetries: 1,
