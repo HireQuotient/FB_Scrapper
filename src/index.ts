@@ -9,7 +9,7 @@ import postsRouter from "./routes/posts";
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors()); // Allow all origins
 app.use(express.json());
 
 app.use("/api/scrape", scrapeRouter);
