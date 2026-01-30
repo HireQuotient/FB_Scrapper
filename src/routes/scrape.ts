@@ -226,14 +226,14 @@ async function bulkSaveMembersFromJobs(
     updateOne: {
       filter: {
         groupUrl,
-        "member.name": metadata.userName || job.contactPerson || "Unknown",
+        "member.name": metadata.userName || "Unknown",
       },
       update: {
         $set: {
           groupUrl,
           groupTitle: metadata.groupTitle || undefined,
           member: {
-            name: metadata.userName || job.contactPerson || "Unknown",
+            name: metadata.userName || "Unknown",
             id: metadata.userId || "",
             profileUrl: metadata.userId
               ? `https://www.facebook.com/profile.php?id=${metadata.userId}`
