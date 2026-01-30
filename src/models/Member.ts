@@ -10,5 +10,12 @@ const MemberSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default mongoose.models.Member || mongoose.model("Member", MemberSchema);
+const MemberModel = mongoose.models.Member || mongoose.model("Member", MemberSchema);
+
+// Drop stale unique index on top-level profileUrl (field lives inside member.profileUrl now)
+MemberModel.collection.dropIndex("profileUrl_1").catch(() => {
+  // Index may not exist — ignore
+});
+
+export default MemberModel;
 

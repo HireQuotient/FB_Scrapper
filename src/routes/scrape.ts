@@ -2,6 +2,8 @@ import { Router, Request, Response } from "express";
 import { scrapeGroup, scrapeMultipleGroups, RawPost } from "../services/apify";
 import { extractJobFromText, extractJobFromImage, StructuredJob } from "../services/gemini";
 import { Job, IAttachment } from "../models/Job";
+import MemberModel from "../models/Member";
+import GroupModel from "../models/Group";
 import { categorizeJob } from "../constants/jobCategories";
 
 const router = Router();
@@ -18,6 +20,18 @@ function isValidFacebookGroupUrl(url: string): boolean {
     );
   } catch {
     return false;
+  }
+}
+
+// Normalize Facebook group URLs to always use www.facebook.com
+function normalizeFbGroupUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hostname = "www.facebook.com";
+    // Remove trailing slash for consistency
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return url;
   }
 }
 
@@ -197,6 +211,81 @@ async function bulkSaveJobs(
   }
 }
 
+// Create/update Member records from job poster data that has contact info
+async function bulkSaveMembersFromJobs(
+  jobsData: Array<{ job: StructuredJob; metadata: PostMetadata; groupUrl: string }>
+): Promise<{ membersCreated: number }> {
+  // Filter to jobs that have at least an email or phone
+  const withContact = jobsData.filter(
+    ({ job }) => job.contactEmail || job.contactPhone
+  );
+
+  if (withContact.length === 0) return { membersCreated: 0 };
+
+  const operations = withContact.map(({ job, metadata, groupUrl }) => ({
+    updateOne: {
+      filter: {
+        groupUrl,
+        "member.name": metadata.userName || job.contactPerson || "Unknown",
+      },
+      update: {
+        $set: {
+          groupUrl,
+          groupTitle: metadata.groupTitle || undefined,
+          member: {
+            name: metadata.userName || job.contactPerson || "Unknown",
+            id: metadata.userId || "",
+            profileUrl: metadata.userId
+              ? `https://www.facebook.com/profile.php?id=${metadata.userId}`
+              : "",
+            profilePicture: metadata.userId
+              ? `https://graph.facebook.com/${metadata.userId}/picture?type=large`
+              : "",
+            contactEmail: job.contactEmail || "",
+            contactPhone: job.contactPhone || "",
+            company: job.company || "",
+            bio: { text: job.location || "" },
+            occupation: job.jobTitle || "",
+          },
+          scrapedAt: new Date(),
+        },
+      },
+      upsert: true,
+    },
+  }));
+
+  try {
+    const result = await MemberModel.bulkWrite(operations, { ordered: false });
+    const count = (result.upsertedCount || 0) + (result.modifiedCount || 0);
+    console.log(`Created/updated ${count} member records from job contact data`);
+
+    // Upsert Group records so members appear in the groups sidebar
+    const uniqueGroups = new Map<string, string>();
+    for (const { metadata, groupUrl } of withContact) {
+      if (!uniqueGroups.has(groupUrl)) {
+        uniqueGroups.set(groupUrl, metadata.groupTitle || "");
+      }
+    }
+    const groupOps = [...uniqueGroups.entries()].map(([url, title]) => ({
+      updateOne: {
+        filter: { url },
+        update: {
+          $set: { url, lastScrapedAt: new Date(), ...(title ? { title } : {}) },
+        },
+        upsert: true,
+      },
+    }));
+    await GroupModel.bulkWrite(groupOps, { ordered: false }).catch((err) =>
+      console.error("Failed to upsert groups:", err)
+    );
+
+    return { membersCreated: count };
+  } catch (err) {
+    console.error("Failed to save members from jobs:", err);
+    return { membersCreated: 0 };
+  }
+}
+
 // Single URL endpoint (original)
 router.post("/", async (req: Request, res: Response): Promise<void> => {
   const { url, resultsLimit } = req.body;
@@ -211,8 +300,10 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  const normalizedUrl = normalizeFbGroupUrl(url);
+
   try {
-    console.log("Scraping public Facebook group:", url);
+    console.log("Scraping public Facebook group:", normalizedUrl);
     const rawPosts = await scrapeGroup(url, { resultsLimit });
 
     if (!rawPosts || rawPosts.length === 0) {
@@ -224,15 +315,16 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
 
     console.log(`Processing ${rawPosts.length} posts with Gemini...`);
 
-    const postsWithUrl = rawPosts.map((post) => ({ post, groupUrl: url }));
+    const postsWithUrl = rawPosts.map((post) => ({ post, groupUrl: normalizedUrl }));
     const results = await processPostsBatch(postsWithUrl, 10);
 
     console.log(`Found ${results.length} job postings out of ${rawPosts.length} posts`);
 
     const { saved, errors } = await bulkSaveJobs(results);
+    const { membersCreated } = await bulkSaveMembersFromJobs(results);
 
-    console.log(`Saved ${saved} jobs to MongoDB (${errors} errors)`);
-    res.json({ jobs: results.map((r) => r.job), totalSaved: saved, errors });
+    console.log(`Saved ${saved} jobs to MongoDB (${errors} errors), ${membersCreated} members created/updated`);
+    res.json({ jobs: results.map((r) => r.job), totalSaved: saved, errors, membersCreated });
   } catch (error: unknown) {
     console.error("Scrape error:", error);
     const message = error instanceof Error ? error.message : "An unexpected error occurred";
@@ -279,17 +371,18 @@ router.post("/batch", async (req: Request, res: Response): Promise<void> => {
       concurrency: concurrency ?? 3,
     });
 
-    // Collect all posts with their group URLs
+    // Collect all posts with normalized group URLs
     const allPosts: Array<{ post: RawPost; groupUrl: string }> = [];
     const urlResults: Record<string, { postsFound: number; error?: string }> = {};
 
     for (const [groupUrl, posts] of groupPostsMap) {
+      const normalized = normalizeFbGroupUrl(groupUrl);
       if (posts.length === 0) {
         urlResults[groupUrl] = { postsFound: 0, error: "No posts retrieved (may be private group)" };
       } else {
         urlResults[groupUrl] = { postsFound: posts.length };
         for (const post of posts) {
-          allPosts.push({ post, groupUrl });
+          allPosts.push({ post, groupUrl: normalized });
         }
       }
     }
@@ -313,8 +406,11 @@ router.post("/batch", async (req: Request, res: Response): Promise<void> => {
     // Step 3: Bulk save all jobs to MongoDB
     const { saved, errors } = await bulkSaveJobs(jobResults);
 
+    // Step 4: Create Member records from jobs with contact info
+    const { membersCreated } = await bulkSaveMembersFromJobs(jobResults);
+
     const totalTime = Date.now() - startTime;
-    console.log(`Batch scrape completed in ${totalTime}ms - Saved ${saved} jobs`);
+    console.log(`Batch scrape completed in ${totalTime}ms - Saved ${saved} jobs, ${membersCreated} members created/updated`);
 
     // Aggregate results by group
     const jobsByGroup: Record<string, StructuredJob[]> = {};
@@ -332,6 +428,7 @@ router.post("/batch", async (req: Request, res: Response): Promise<void> => {
         totalJobsExtracted: jobResults.length,
         totalJobsSaved: saved,
         totalErrors: errors,
+        membersCreated,
         processingTimeMs: totalTime,
       },
       urlResults,

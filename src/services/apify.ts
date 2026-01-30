@@ -54,7 +54,7 @@ export interface ScrapeOptions {
 export async function scrapeGroup(groupUrl: string, options?: ScrapeOptions): Promise<RawPost[]> {
   const input = {
     startUrls: [{ url: groupUrl }],
-    resultsLimit: options?.resultsLimit ?? 10,
+    resultsLimit: options?.resultsLimit ?? 100,
     viewOption: "CHRONOLOGICAL",
     maxComments: 0,
     maxRequestRetries: 1,
