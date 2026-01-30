@@ -30,11 +30,7 @@ try {
 console.log("GOOGLE_API_KEY present:", !!process.env.GOOGLE_API_KEY, "GOOGLE_CX present:", !!process.env.GOOGLE_CX, "cwd:", process.cwd());
 
 // For local development enable CORS
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
-  })
-);
+app.use(cors());
 
 app.use(express.json());
 
